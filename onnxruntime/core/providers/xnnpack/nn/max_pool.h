@@ -18,8 +18,8 @@ class MaxPool : public OpKernel {
   MaxPool(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
-  static bool IsMaxPoolOnnxNodeSupported(const onnxruntime::NodeUnit& nodeunit,
-                                         const onnxruntime::GraphViewer& /*graph*/);
+  static bool IsMaxPoolOnnxNodeSupported(const NodeUnit& nodeunit,
+                                         const GraphViewer& /*graph*/);
 
  private:
   const PoolAttributes pool_attrs_;

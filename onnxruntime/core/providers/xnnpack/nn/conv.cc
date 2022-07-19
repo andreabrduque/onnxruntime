@@ -10,7 +10,6 @@
 #include "core/providers/xnnpack/detail/utils.h"
 #include "core/framework/tensorprotoutils.h"
 
-
 namespace onnxruntime {
 namespace xnnpack {
 
@@ -19,7 +18,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
                            int64_t C, int64_t M,
                            const TensorShapeVector& kernel_shape,
                            const std::optional<std::pair<float, float>>& clip_min_max,
-                           const Tensor& W, const Tensor* B_Ts,
+                           const Tensor& Weight, const Tensor* Bias,
                            struct xnn_operator*& p,
                            xnn_caches_t caches_t,
                            QuantParam* quant_param,
@@ -57,23 +56,23 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
   if (conv_type == OpComputeType::op_compute_type_fp32) {
     float output_min = clip_min_max ? clip_min_max->first : -INFINITY;
     float output_max = clip_min_max ? clip_min_max->second : INFINITY;
-    auto* B_data = B_Ts ? B_Ts->Data<float>() : nullptr;
+    auto* B_data = Bias ? Bias->Data<float>() : nullptr;
     status = xnn_create_convolution2d_nhwc_f32(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
         subsampling_height, subsampling_width,
         dilation_height, dilation_width,
         group_count,
-        group_input_channels, group_output_channels,     // groups, group_input_channels, group_output_channels
-        C, M,  // input channel stride, output channel stride
-        W.Data<float>(), B_data,
+        group_input_channels, group_output_channels,  // groups, group_input_channels, group_output_channels
+        C, M,                                         // input channel stride, output channel stride
+        Weight.Data<float>(), B_data,
         output_min, output_max, flags,
         caches_t,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8) {
     int8_t output_min = -126;
     int8_t output_max = 126;
-    auto* B_data = B_Ts ? B_Ts->Data<int32_t>() : nullptr;
+    auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
     status = xnn_create_convolution2d_nhwc_qs8(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
@@ -83,15 +82,15 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         group_input_channels,
         group_output_channels,
         C, M,
-        static_cast<int8_t>(quant_param->X_zero_point_value), quant_param->X_scale_value,
-        quant_param->W_scale_value, W.Data<int8_t>(), B_data,
-        static_cast<int8_t>(quant_param->Y_zero_point_value), quant_param->Y_scale_value,
+        gsl::narrow<int8_t>(quant_param->X_zero_point_value), quant_param->X_scale_value,
+        quant_param->W_scale_value, Weight.Data<int8_t>(), B_data,
+        gsl::narrow<int8_t>(quant_param->Y_zero_point_value), quant_param->Y_scale_value,
         output_min, output_max,
         flags,
         caches_t,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8_per_channel) {
-    auto* B_data = B_Ts ? B_Ts->Data<int32_t>() : nullptr;
+    auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
     int8_t output_min = -126;
     int8_t output_max = 126;
     status = xnn_create_convolution2d_nhwc_qc8(
@@ -103,18 +102,18 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         group_input_channels,
         group_output_channels,
         C, M,
-        static_cast<int8_t>(quant_param->X_zero_point_value), quant_param->X_scale_value,
+        gsl::narrow<int8_t>(quant_param->X_zero_point_value), quant_param->X_scale_value,
         quant_param->W_scale_tensor->template Data<float>(),
-        W.Data<int8_t>(), B_data,
+        Weight.Data<int8_t>(), B_data,
         quant_param->Y_zero_point_value, quant_param->Y_scale_value,
         output_min, output_max,
         flags,
         caches_t,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qu8) {
-    auto* B_data = B_Ts ? B_Ts->Data<int32_t>() : nullptr;
-    uint8_t output_min = clip_min_max ? static_cast<uint8_t>(clip_min_max->first) : 0;
-    uint8_t output_max = clip_min_max ? static_cast<uint8_t>(clip_min_max->second) : 255;
+    auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
+    uint8_t output_min = clip_min_max ? gsl::narrow<uint8_t>(clip_min_max->first) : 0;
+    uint8_t output_max = clip_min_max ? gsl::narrow<uint8_t>(clip_min_max->second) : 255;
     status = xnn_create_convolution2d_nhwc_qu8(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
@@ -126,7 +125,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         C, M,
         quant_param->X_zero_point_value, quant_param->X_scale_value,
         quant_param->W_zero_point_value, quant_param->W_scale_value,
-        W.Data<uint8_t>(), B_data,
+        Weight.Data<uint8_t>(), B_data,
         quant_param->Y_zero_point_value, quant_param->Y_scale_value,
         output_min, output_max,
         flags,
@@ -144,7 +143,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
   return Status::OK();
 }
 
-OpComputeType ParseQuantParamAndConType(const OpKernelInfo& info, QuantParam& quant_param_, int32_t x_dtype) {
+static OpComputeType ParseQuantParamAndConType(const OpKernelInfo& info, QuantParam& quant_param_, int32_t x_dtype) {
   InputTensorOrder tensor_index = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   ParseQuantParamFromInfoByOrder(info, tensor_index, quant_param_);
   OpComputeType conv_type = OpComputeType::op_compute_type_invalid;
@@ -166,8 +165,8 @@ OpComputeType ParseQuantParamAndConType(const OpKernelInfo& info, QuantParam& qu
 
 // if bias type is int32 and it has no quantparam, the dtype check will be failed GetTensorQuantType
 // however, it should be fine.
-TensorQuantType TryGetConvBiasDtype(const onnxruntime::NodeUnit& node_unit,
-                                         const onnxruntime::GraphViewer& graph_viewer) {
+static TensorQuantType TryGetConvBiasDtype(const NodeUnit& node_unit,
+                                           const GraphViewer& graph_viewer) {
   // we are not check the legality of io_index here
   const NodeUnitIODef& iodef = node_unit.Inputs()[2];
   TensorQuantType datatype = TensorTypeInvalid;
@@ -179,7 +178,7 @@ TensorQuantType TryGetConvBiasDtype(const onnxruntime::NodeUnit& node_unit,
   std::vector<uint8_t> unpacked_tensor;
   const onnx::TensorProto* bias_value = nullptr;
   if (graph_viewer.GetInitializedTensor(iodef.node_arg.Name(), bias_value)) {
-    if (onnxruntime::utils::UnpackInitializerData(
+    if (utils::UnpackInitializerData(
             *bias_value, node_unit.ModelPath(), unpacked_tensor)
             .IsOK()) {
       const auto& W_shape = node_unit.Inputs()[1].node_arg.Shape();
@@ -192,21 +191,6 @@ TensorQuantType TryGetConvBiasDtype(const onnxruntime::NodeUnit& node_unit,
       }
     }
   }
-  /*
-  // Does the quant_param have any impact here?
-  else if (iodef.quant_param.has_value()) {
-    const auto *scale = GetQuantizationScale(graph_viewer.GetAllInitializedTensors(), iodef);
-    const auto *zero_point = GetQuantizationZeroPoint(graph_viewer.GetAllInitializedTensors(), iodef);
-    if (scale != nullptr && onnxruntime::utils::UnpackInitializerData(
-                                *scale, node_unit.ModelPath(), unpacked_tensor)
-                                .IsOK()) {
-      if (zero_point != nullptr && onnxruntime::utils::UnpackInitializerData(
-                                       *zero_point, node_unit.ModelPath(), unpacked_tensor)
-                                       .IsOK()) {
-      }
-
-      }
-  }*/
 
   return datatype;
 }
@@ -264,12 +248,12 @@ static OpComputeType GetConvCompType(
 /*
  * | conv type| input dtype|weight dtype| per channel|zero point handle|
  * | qc8      |  i8        | i8         |  yes       |zero
- * | qcu8     |  xx        | xx         |  yes       | not surpported yet
+ * | qcu8     |  xx        | xx         |  yes       |not supported yet
  * | qs8      |  i8        | i8         |  no        |orig_zp
  * | qu8      |  u8        | u8         |  no        |orig_zp + 128
  */
 //
-static bool isValidQuantConv(const onnxruntime::NodeUnit& node_unit, const onnxruntime::GraphViewer& graph) {
+static bool IsValidQuantConv(const NodeUnit& node_unit, const GraphViewer& graph) {
   bool supported = false;
   do {
     TensorQuantType x_input_type, w_input_type, bias_input_type, output_type;
@@ -291,7 +275,7 @@ static bool isValidQuantConv(const onnxruntime::NodeUnit& node_unit, const onnxr
   return supported;
 }
 
-bool IsQuantizedConv(QuantizedOpType quant_op_type) {
+static bool IsQuantizedConv(QuantizedOpType quant_op_type) {
   return (quant_op_type == QuantizedOpType::QLinearConv) ||
          (quant_op_type == QuantizedOpType::QDQConv);
 }
@@ -303,8 +287,8 @@ bool IsQuantizedConv(QuantizedOpType quant_op_type) {
 bool Conv::IsConvOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
   bool supported = false;
   auto qtype = GetQuantizedOpType(node_unit);
-  if (IsQuantizedConv(qtype) && isValidQuantConv(node_unit, graph) == false) {
-    return supported;
+  if (IsQuantizedConv(qtype) && IsValidQuantConv(node_unit, graph) == false) {
+    return false;
   }
 
   const onnxruntime::Node& node = node_unit.GetNode();
@@ -350,8 +334,8 @@ bool Conv::IsConvOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
       }
     }
 
-    onnxruntime::ProtoHelperNodeContext nc(node);
-    onnxruntime::OpNodeProtoHelper info(&nc);
+    ProtoHelperNodeContext nc(node);
+    OpNodeProtoHelper info(&nc);
 
     // 'group' value needs to be 1 or C.
     // the second dim of weight is C/group, so if that == 1, group == C

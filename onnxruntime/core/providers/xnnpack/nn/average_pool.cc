@@ -10,12 +10,12 @@
 namespace onnxruntime {
 namespace xnnpack {
 namespace {
-Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
-                           int64_t C,
-                           const std::optional<std::pair<float, float>>& clip_min_max,
-                           struct xnn_operator*& p,
-                           QuantParam* quant_param,
-                           OpComputeType avgpool_type) {
+static Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
+                                  int64_t C,
+                                  const std::optional<std::pair<float, float>>& clip_min_max,
+                                  struct xnn_operator*& p,
+                                  QuantParam* quant_param,
+                                  OpComputeType avgpool_type) {
   uint32_t input_padding_top = gsl::narrow<uint32_t>(pool_attrs.pads[0]);
   uint32_t input_padding_left = gsl::narrow<uint32_t>(pool_attrs.pads[1]);
   uint32_t input_padding_bottom = gsl::narrow<uint32_t>(pool_attrs.pads[2]);
@@ -69,10 +69,6 @@ static bool IsQuantAvgPoolSupported(const NodeUnit& node_unit, const GraphViewer
   bool supported = false;
   do {
     TensorQuantType x_input_type, output_type;
-    const auto& inputs = node_unit.Inputs();
-    if (inputs.size() != 1) {
-      break;
-    }
 
     x_input_type = GetTensorQuantType(node_unit, 0, false, graph);
     output_type = GetTensorQuantType(node_unit, 0, true, graph);
@@ -86,20 +82,20 @@ static bool IsQuantAvgPoolSupported(const NodeUnit& node_unit, const GraphViewer
   return supported;
 }
 
-bool IsQuantizedAvgPool(QuantizedOpType quant_op_type) {
+static bool IsQuantizedAvgPool(QuantizedOpType quant_op_type) {
   return (quant_op_type == QuantizedOpType::QlinearAvgPool) ||
          (quant_op_type == QuantizedOpType::QDQAvgPool);
 }
 
 }  // namespace
 
-bool AveragePool::IsAveragePoolOnnxNodeSupported(const onnxruntime::NodeUnit& node_unit,
-                                                 const onnxruntime::GraphViewer& graph) {
+bool AveragePool::IsAveragePoolOnnxNodeSupported(const NodeUnit& node_unit,
+                                                 const GraphViewer& graph) {
   bool supported = false;
   auto qtype = GetQuantizedOpType(node_unit);
   // we check quant-conditions first, if this quant-node is not supported, return directly.
   if (IsQuantizedAvgPool(qtype) && IsQuantAvgPoolSupported(node_unit, graph) == false) {
-    return supported;
+    return false;
   }
   // share the common checks here for fp32 and quant-op
   const auto& inputs = node_unit.Inputs();
@@ -128,9 +124,9 @@ bool AveragePool::IsAveragePoolOnnxNodeSupported(const onnxruntime::NodeUnit& no
       break;
     }
 
-    onnxruntime::ProtoHelperNodeContext nc(node_unit.GetNode());
-    onnxruntime::OpNodeProtoHelper info(&nc);
-    onnxruntime::PoolAttributes pool_attrs(info, "AveragePool", node_unit.SinceVersion());
+    ProtoHelperNodeContext nc(node_unit.GetNode());
+    OpNodeProtoHelper info(&nc);
+    PoolAttributes pool_attrs(info, "AveragePool", node_unit.SinceVersion());
 
     // xnnpack doesn't appear to support using 'ceil' to calculate the output shape
     // https://github.com/google/XNNPACK/blob/3caa8b9de973839afa1e2a1462ff356e6927a66b/src/operators/average-pooling-nhwc.c#L643
@@ -156,7 +152,6 @@ bool AveragePool::IsAveragePoolOnnxNodeSupported(const onnxruntime::NodeUnit& no
       break;
     }
 
-    // Average-pool has no multi-outputs definition in ONNX
     supported = true;
   } while (false);
 
@@ -257,8 +252,8 @@ Status AveragePool::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    AveragePool, kMSInternalNHWCDomain, 11, 11,
+ONNX_OPERATOR_KERNEL_EX(
+    AveragePool, kMSInternalNHWCDomain, 11,
     kXnnpackExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     AveragePool);

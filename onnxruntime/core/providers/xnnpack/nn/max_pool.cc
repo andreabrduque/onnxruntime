@@ -13,16 +13,35 @@
 namespace onnxruntime {
 namespace xnnpack {
 namespace {
-bool IsQuantizedMaxPool(QuantizedOpType quant_op_type) {
+static bool IsQuantizedMaxPool(QuantizedOpType quant_op_type) {
   return (quant_op_type == QuantizedOpType::QLinearMaxPool) ||
          (quant_op_type == QuantizedOpType::QDQMaxPool);
 }
+
+static bool IsValidQuantMaxPool(const NodeUnit& node_unit, const GraphViewer& graph) {
+  bool supported = false;
+  do {
+    TensorQuantType x_input_type, output_type;
+    x_input_type = GetTensorQuantType(node_unit, 0, false, graph);
+    output_type = GetTensorQuantType(node_unit, 0, true, graph);
+    if (x_input_type != TensorTypeUint8 || output_type != TensorTypeUint8) {
+      break;
+    }
+    supported = true;
+  } while (false);
+  return supported;
+}
+
 }
 
 // MaxPool doesn't have any quantization params
-bool MaxPool::IsMaxPoolOnnxNodeSupported(const onnxruntime::NodeUnit& node_unit,
-                                         const onnxruntime::GraphViewer& /*graph*/) {
+bool MaxPool::IsMaxPoolOnnxNodeSupported(const NodeUnit& node_unit,
+                                         const GraphViewer& graph) {
   bool supported = false;
+  auto qtype = GetQuantizedOpType(node_unit);
+  if (IsQuantizedMaxPool(qtype) && IsValidQuantMaxPool(node_unit, graph) == false) {
+    return false;
+  }
   const onnxruntime::Node& node = node_unit.GetNode();
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
@@ -58,9 +77,9 @@ bool MaxPool::IsMaxPoolOnnxNodeSupported(const onnxruntime::NodeUnit& node_unit,
       break;
     }
 
-    onnxruntime::ProtoHelperNodeContext nc(node);
-    onnxruntime::OpNodeProtoHelper info(&nc);
-    onnxruntime::PoolAttributes pool_attrs(info, "MaxPool", node.SinceVersion());
+    ProtoHelperNodeContext nc(node);
+    OpNodeProtoHelper info(&nc);
+    PoolAttributes pool_attrs(info, "MaxPool", node.SinceVersion());
 
     // xnnpack doesn't appear to support using 'ceil' to calculate the output shape
     // https://github.com/google/XNNPACK/blob/3caa8b9de973839afa1e2a1462ff356e6927a66b/src/operators/max-pooling-nhwc.c#L256
@@ -155,8 +174,8 @@ MaxPool::MaxPool(const OpKernelInfo& info)
                                                output_min, output_max, flags, &p);
   } else if (X_arg.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     maxpool_type_ = OpComputeType::op_compute_type_qu8;
-    uint8_t output_min = clip_min_max_ ? static_cast<uint8_t>(clip_min_max_->first) : 0;
-    uint8_t output_max = clip_min_max_ ? static_cast<uint8_t>(clip_min_max_->second) : 255;
+    uint8_t output_min = 0;
+    uint8_t output_max = 255;
     status = xnn_create_max_pooling2d_nhwc_u8(input_padding_top, input_padding_right,
                                               input_padding_bottom, input_padding_left,
                                               pooling_height, pooling_width,
@@ -167,7 +186,7 @@ MaxPool::MaxPool(const OpKernelInfo& info)
   } else {
     // it's impossible, as we have checked it in op_checker
   }
-  ORT_ENFORCE(status == xnn_status_success, "xnn_create_max_pooling2d_nhwc_f32 failed. Status:", status);
+  ORT_ENFORCE(status == xnn_status_success, "xnn_create_max_pooling2d_nhwc_type failed. Status:", status);
 
   op0_.reset(p);
 }
@@ -213,9 +232,10 @@ Status MaxPool::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 11, 11, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder()
+                                      .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                            DataTypeImpl::GetTensorType<uint8_t>()}),
                                   MaxPool);
 
 ONNX_OPERATOR_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 12, kXnnpackExecutionProvider,

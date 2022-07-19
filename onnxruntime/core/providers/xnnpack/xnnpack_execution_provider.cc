@@ -39,7 +39,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, AveragePool);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, AveragePool);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 13, Softmax);
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, uint8_t, QLinearConv);
@@ -57,7 +57,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO(11, Conv),
       KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool),
       KERNEL_CREATE_INFO(12, MaxPool),
-      KERNEL_CREATE_INFO_VERSIONED(11, 11, AveragePool),
+      KERNEL_CREATE_INFO(11, AveragePool),
       // layout insensitive, use ONNX-domain directly
       BuildKernelCreateInfo<
           ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 13, Softmax)>,

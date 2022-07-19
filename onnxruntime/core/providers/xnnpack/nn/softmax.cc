@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace xnnpack {
 
 namespace {
-bool IsQuantSoftmaxSupported(const onnxruntime::NodeUnit& node_unit, const onnxruntime::GraphViewer& graph) {
+static bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
   bool supported = false;
   do {
     TensorQuantType x_input_type, output_type;
@@ -26,17 +26,17 @@ bool IsQuantSoftmaxSupported(const onnxruntime::NodeUnit& node_unit, const onnxr
   return supported;
 }
 
-bool IsQuantizedSoftmax(QuantizedOpType quant_op_type) {
+static bool IsQuantizedSoftmax(QuantizedOpType quant_op_type) {
   return (quant_op_type == QuantizedOpType::QDQSoftmax);
 }
 }  // namespace
 
-bool Softmax::IsSoftmaxOnnxNodeSupported(const onnxruntime::NodeUnit& node_unit,
-                                         const onnxruntime::GraphViewer& graph) {
+bool Softmax::IsSoftmaxOnnxNodeSupported(const NodeUnit& node_unit,
+                                         const GraphViewer& graph) {
   bool supported = false;
   if (IsQuantizedSoftmax(GetQuantizedOpType(node_unit)) &&
       IsQuantSoftmaxSupported(node_unit, graph) == false) {
-    return supported;
+    return false;
   }
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
@@ -44,12 +44,6 @@ bool Softmax::IsSoftmaxOnnxNodeSupported(const onnxruntime::NodeUnit& node_unit,
     const auto& inputs = node_unit.Inputs();
     const auto& x_arg = inputs[0].node_arg;
 
-    const auto* x_shape = x_arg.Shape();
-    // require C to be known so we can construct the xnnpack kernel prior to Compute
-    if (!x_shape || x_shape->dim_size() == 0 ||
-        !x_shape->dim(x_shape->dim_size() - 1).has_dim_value()) {
-      break;
-    }
     // we only support float and u8 currently
     const auto* x_type = x_arg.TypeAsProto();
     if (x_type == nullptr ||
@@ -57,8 +51,8 @@ bool Softmax::IsSoftmaxOnnxNodeSupported(const onnxruntime::NodeUnit& node_unit,
          x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8)) {
       break;
     }
-    onnxruntime::ProtoHelperNodeContext nc(node_unit.GetNode());
-    onnxruntime::OpNodeProtoHelper info(&nc);
+    ProtoHelperNodeContext nc(node_unit.GetNode());
+    OpNodeProtoHelper info(&nc);
 
     // axis could be any dim, but we want it to be the last one right now.
     // otherwise, just leave it to CPU_EP
@@ -67,8 +61,28 @@ bool Softmax::IsSoftmaxOnnxNodeSupported(const onnxruntime::NodeUnit& node_unit,
     if (node_unit.SinceVersion() <= 12 && axis == -1) {
       axis = 1;  // default 1 for op-version less than 12
     }
+
+    const auto* x_shape = x_arg.Shape();
+    if (!x_shape || x_shape->dim_size() == 0) {
+      break;
+    }
+
     if (axis != -1 && axis != x_shape->dim_size() - 1 && node_unit.SinceVersion() >= 13) {
       break;
+    }
+
+    // require the performed axises by Softmax to be known so we can construct the xnnpack kernel prior to Compute
+    if (node_unit.SinceVersion() <= 12) {
+      for (int axis_s = gsl::narrow_cast<int>(axis); axis_s < x_shape->dim_size(); ++axis_s) {
+        if (!x_shape->dim(axis_s).has_dim_value()) {
+          break;
+        }
+      }
+    } else {
+      // opset version >=13
+      if (!x_shape->dim(x_shape->dim_size() - 1).has_dim_value()) {
+        break;
+      }
     }
 
     supported = true;
@@ -105,7 +119,7 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
     return;
   }
   if (axis_ < 0) {
-    axis_ = static_cast<int>(HandleNegativeAxis(axis_, int64_t(rank)));
+    axis_ = gsl::narrow<int>(HandleNegativeAxis(axis_, int64_t(rank)));
   }
 
   int kernel_dtype = 0;
@@ -114,17 +128,19 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
     op_type_ = OpComputeType::op_compute_type_fp32;
   } else if (kernel_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     op_type_ = OpComputeType::op_compute_type_qu8;
+  } else {
+    ORT_THROW("error kernel type input, expected uint8|float, but got `", kernel_dtype, "`");
   }
 
   uint32_t channels = gsl::narrow_cast<uint32_t>(x_shape->dim(axis_).dim_value());
   if (opset_ < 13) {
-    for (int i = axis_ + 1; i < rank; i++) {
+    for (int i = axis_ + 1; i < gsl::narrow_cast<int>(rank); i++) {
       channels *= gsl::narrow_cast<uint32_t>(x_shape->dim(i).dim_value());
     }
   }
 
-  xnn_status xstatus;
-  struct xnn_operator* p;
+  xnn_status xstatus = xnn_status_invalid_state;
+  struct xnn_operator* p = nullptr;
   if (op_type_ == OpComputeType::op_compute_type_qu8) {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
     InputTensorOrder tensor_index = {-1, 1, 2, -1, -1, -1, 3, 4, -1};
@@ -145,10 +161,8 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
         channels,
         0,  // flags,
         &p);
-  } else {
-    ORT_ENFORCE(0, "error kernel type input, expected uint8|float");
   }
-  ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_softmax_nc_f32 failed. Status:", xstatus);
+  ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_softmax_nc failed. Status:", xstatus);
   op0_.reset(p);
 }
 
@@ -180,8 +194,13 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
         Y->template MutableData<float>(),
         nullptr);
   }
-  ORT_ENFORCE(status == xnn_status_success, "xnn_setup_softmax_nc_type failed. Status:", status);
-  ORT_ENFORCE(xnn_run_operator(op0_.get(), nullptr) == xnn_status_success, "xnn_run_operator returned ", status);
+  if (status != xnn_status_success) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_softmax_nc_type returned ", status);
+  }
+  status = xnn_run_operator(op0_.get(), nullptr);
+  if (status != xnn_status_success) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
+  }
   return Status::OK();
 }
 

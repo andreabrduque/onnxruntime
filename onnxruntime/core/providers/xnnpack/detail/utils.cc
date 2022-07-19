@@ -91,7 +91,7 @@ static const std::unordered_map<QuantizedOpType, ONNXOpType> qdq_to_onnx_type_ma
     {QuantizedOpType::QDQConv, "QLinearConv"},
     {QuantizedOpType::QDQAvgPool, "QLinearAveragePool"},
     {QuantizedOpType::QDQSoftmax, "QLinearSoftmax"},
-    {QuantizedOpType::QDQMaxPool, "QLinearMaxPool"},
+    {QuantizedOpType::QDQMaxPool, "MaxPool"},
 };
 
 std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit) {
@@ -267,14 +267,14 @@ const onnx::TensorProto* GetQuantizationZeroPoint(const InitializedTensorSet& in
 }
 
 // we have uint8,int8 and int8_per-channel
-TensorQuantType GetTensorQuantType(const onnxruntime::NodeUnit& node_unit, int32_t io_index,
-                                   bool is_output, const onnxruntime::GraphViewer& graph_viewer) {
+TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
+                                   bool is_output, const GraphViewer& graph_viewer) {
   // we do not check the legality of io_index here
   const NodeUnitIODef& iodef = is_output ? node_unit.Outputs()[io_index] : node_unit.Inputs()[io_index];
   TensorQuantType datatype = TensorTypeInvalid;
   int32_t input_type = 0;
   if (!GetType(iodef.node_arg, input_type) || iodef.quant_param.has_value() == false) {
-    return datatype;
+    return TensorTypeInvalid;
   }
 
   const InitializedTensorSet& initializers = graph_viewer.GetAllInitializedTensors();
@@ -282,7 +282,7 @@ TensorQuantType GetTensorQuantType(const onnxruntime::NodeUnit& node_unit, int32
   auto* scale_tensor = GetQuantizationScale(initializers, iodef);
 
   if (scale_tensor == nullptr || (zero_tensor && zero_tensor->data_type() != input_type)) {
-    return datatype;
+    return TensorTypeInvalid;
   }
 
   int64_t scales_dim = scale_tensor->dims().empty() ? 1 : scale_tensor->dims()[0];
@@ -291,7 +291,7 @@ TensorQuantType GetTensorQuantType(const onnxruntime::NodeUnit& node_unit, int32
 
   TensorShapeVector tensor_shape;
   if (!GetShape(iodef.node_arg, tensor_shape)) {
-    return datatype;
+    return TensorTypeInvalid;
   }
 
   std::vector<uint8_t> unpacked_tensor;
@@ -319,11 +319,11 @@ TensorQuantType GetTensorQuantType(const onnxruntime::NodeUnit& node_unit, int32
 
       if (scales_dim == 1) {
         datatype = TensorTypeInt8;
-        // layout keeps NCHW, check channel dim
-      } else if (scales_dim == tensor_shape[1]) {
+        // layout keeps NCHW, check output channel dim
+      } else if (scales_dim == tensor_shape[0]) {
         // default 0 for zero-point if zero_dim == 0
         if (zero_tensor != nullptr) {
-          auto status = onnxruntime::utils::UnpackInitializerData(*zero_tensor, node_unit.ModelPath(), unpacked_tensor);
+          auto status = utils::UnpackInitializerData(*zero_tensor, node_unit.ModelPath(), unpacked_tensor);
           if (!status.IsOK()) {
             LOGS_DEFAULT(ERROR) << "error when unpack zero tensor: "
                                 << ", error msg: " << status.ErrorMessage();
@@ -362,7 +362,7 @@ bool ParseQuantParamFromInfoByOrder(const OpKernelInfo& info,
   // we do not check the error here, as we have done it in op_checker
   // if this input tensor is not exists, its value is -1;
   if (scale_zp_indexs.X_ZERO_POINT >= 0) {
-    const onnxruntime::Tensor* X_zero_point = nullptr;
+    const Tensor* X_zero_point = nullptr;
     info.TryGetConstantInput(scale_zp_indexs.X_ZERO_POINT, &X_zero_point);
 
     if (X_zero_point == nullptr) {
@@ -375,7 +375,7 @@ bool ParseQuantParamFromInfoByOrder(const OpKernelInfo& info,
   }
 
   if (scale_zp_indexs.W_ZERO_POINT >= 0) {
-    const onnxruntime::Tensor* W_zero_point = nullptr;
+    const Tensor* W_zero_point = nullptr;
     info.TryGetConstantInput(scale_zp_indexs.W_ZERO_POINT, &W_zero_point);
 
     if (W_zero_point == nullptr) {
@@ -386,7 +386,7 @@ bool ParseQuantParamFromInfoByOrder(const OpKernelInfo& info,
   }
 
   if (scale_zp_indexs.Y_ZERO_POINT >= 0) {
-    const onnxruntime::Tensor* Y_zero_point = nullptr;
+    const Tensor* Y_zero_point = nullptr;
     info.TryGetConstantInput(scale_zp_indexs.Y_ZERO_POINT, &Y_zero_point);
 
     if (Y_zero_point == nullptr) {
@@ -397,13 +397,13 @@ bool ParseQuantParamFromInfoByOrder(const OpKernelInfo& info,
   }
 
   if (scale_zp_indexs.X_SCALE >= 0) {
-    const onnxruntime::Tensor* X_scale = nullptr;
+    const Tensor* X_scale = nullptr;
     info.TryGetConstantInput(scale_zp_indexs.X_SCALE, &X_scale);
     quant_param.X_scale_value = *(X_scale->template Data<float>());
   }
 
   if (scale_zp_indexs.W_SCALE >= 0) {
-    const onnxruntime::Tensor* W_scale = nullptr;
+    const Tensor* W_scale = nullptr;
     info.TryGetConstantInput(scale_zp_indexs.W_SCALE, &W_scale);
     quant_param.W_scale_value = *(W_scale->template Data<float>());
 
@@ -413,7 +413,7 @@ bool ParseQuantParamFromInfoByOrder(const OpKernelInfo& info,
   }
 
   if (scale_zp_indexs.Y_SCALE >= 0) {
-    const onnxruntime::Tensor* Y_scale = nullptr;
+    const Tensor* Y_scale = nullptr;
     info.TryGetConstantInput(scale_zp_indexs.Y_SCALE, &Y_scale);
     quant_param.Y_scale_value = *(Y_scale->template Data<float>());
   }
