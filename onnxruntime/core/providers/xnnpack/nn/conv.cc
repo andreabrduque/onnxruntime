@@ -82,9 +82,9 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         group_input_channels,
         group_output_channels,
         C, M,
-        gsl::narrow<int8_t>(quant_param->X_zero_point_value), quant_param->X_scale_value,
+        quant_param->X_zero_point_value, quant_param->X_scale_value,
         quant_param->W_scale_value, Weight.Data<int8_t>(), B_data,
-        gsl::narrow<int8_t>(quant_param->Y_zero_point_value), quant_param->Y_scale_value,
+        quant_param->Y_zero_point_value, quant_param->Y_scale_value,
         output_min, output_max,
         flags,
         caches_t,
@@ -102,8 +102,9 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         group_input_channels,
         group_output_channels,
         C, M,
-        gsl::narrow<int8_t>(quant_param->X_zero_point_value), quant_param->X_scale_value,
-        quant_param->W_scale_tensor->template Data<float>(),
+        // zero_point will convert to int8_t automatically
+        quant_param->X_zero_point_value, quant_param->X_scale_value,
+        quant_param->W_scale_tensor->Data<float>(),
         Weight.Data<int8_t>(), B_data,
         quant_param->Y_zero_point_value, quant_param->Y_scale_value,
         output_min, output_max,
@@ -112,8 +113,8 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qu8) {
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
-    uint8_t output_min = clip_min_max ? gsl::narrow<uint8_t>(clip_min_max->first) : 0;
-    uint8_t output_max = clip_min_max ? gsl::narrow<uint8_t>(clip_min_max->second) : 255;
+    uint8_t output_min = 0;
+    uint8_t output_max = 255;
     status = xnn_create_convolution2d_nhwc_qu8(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,

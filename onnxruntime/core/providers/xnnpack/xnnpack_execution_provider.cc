@@ -40,14 +40,16 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWC
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, AveragePool);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 13, Softmax);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax);
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, uint8_t, QLinearConv);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, int8_t, QLinearConv);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
-                                            kMSInternalNHWCDomain, 1, uint8_t, QLinearAveragePool);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearAveragePool);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
-                                                kMSInternalNHWCDomain, 1, 13, QLinearSoftmax);
+                                      kMSInternalNHWCDomain, 1, 12, QLinearSoftmax);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
+                                      kMSInternalNHWCDomain, 13, QLinearSoftmax);
 
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
@@ -60,13 +62,14 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO(11, AveragePool),
       // layout insensitive, use ONNX-domain directly
       BuildKernelCreateInfo<
-          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 13, Softmax)>,
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax)>,
 
       //  quantization op
       KERNEL_CREATE_INFO_TYPED(10, uint8_t, QLinearConv),
       KERNEL_CREATE_INFO_TYPED(10, int8_t, QLinearConv),
-      KERNEL_CREATE_INFO_TYPED(1, uint8_t, QLinearAveragePool),
-      KERNEL_CREATE_INFO_VERSIONED(1, 13, QLinearSoftmax),
+      KERNEL_CREATE_INFO(1, QLinearAveragePool),
+      KERNEL_CREATE_INFO_VERSIONED(1, 12, QLinearSoftmax),
+      KERNEL_CREATE_INFO(13, QLinearSoftmax),
   };
 
   for (auto& function_table_entry : function_table) {

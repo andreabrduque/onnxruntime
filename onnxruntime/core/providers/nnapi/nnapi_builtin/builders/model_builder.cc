@@ -621,11 +621,11 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 }
 
 int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
-  const auto& output_nodes = node_unit.GetOutputNodes();
-  if (node_unit.GetOutputNodes().size() != 1) {
+  const auto& output_def_size = node_unit.Outputs().size();
+  if (output_def_size != 1) {
     LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
                           << "] type [" << node_unit.OpType()
-                          << "], with " << output_nodes.size() << " output nodes";
+                          << "], with " << output_def_size << " output nodes";
     return ANEURALNETWORKS_FUSED_NONE;
   }
 

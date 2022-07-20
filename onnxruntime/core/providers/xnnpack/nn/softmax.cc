@@ -93,10 +93,13 @@ bool Softmax::IsSoftmaxOnnxNodeSupported(const NodeUnit& node_unit,
 
 Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   const auto& node = info.node();
-  opset_ = node.SinceVersion();
+  int64_t opset = -1;
+  Status status = info.GetAttr<int64_t>("opset", &opset);
+  ORT_ENFORCE(status.IsOK(), "opset must be existed in attributes of QlinearSoftmax");
+  opset_ = gsl::narrow_cast<int>(opset);
 
-  int64_t axis;
-  Status status = info.GetAttr<int64_t>("axis", &axis);
+  int64_t axis = -1;
+  status = info.GetAttr<int64_t>("axis", &axis);
   // our op checker function has ensured that axis must be the last dim
   // The "semantic" meaning of axis has changed in opset-13.
   // Please compare: https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax
@@ -183,15 +186,15 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
     status = xnn_setup_softmax_nc_qu8(
         op0_.get(),
         N,
-        X->template Data<uint8_t>(),
-        Y->template MutableData<uint8_t>(),
+        X->Data<uint8_t>(),
+        Y->MutableData<uint8_t>(),
         nullptr);
   } else {
     status = xnn_setup_softmax_nc_f32(
         op0_.get(),
         N,
-        X->template Data<float>(),
-        Y->template MutableData<float>(),
+        X->Data<float>(),
+        Y->MutableData<float>(),
         nullptr);
   }
   if (status != xnn_status_success) {
@@ -204,12 +207,18 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Softmax, kOnnxDomain, 1, 13, kXnnpackExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Softmax, kOnnxDomain, 1, 12, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                   Softmax);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(QLinearSoftmax, kMSInternalNHWCDomain, 1, 13, kXnnpackExecutionProvider,
+ONNX_OPERATOR_KERNEL_EX(Softmax, kOnnxDomain, 13, kXnnpackExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        Softmax);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(QLinearSoftmax, kMSInternalNHWCDomain, 1, 12, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
                                   Softmax);
+ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kMSInternalNHWCDomain, 13, kXnnpackExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
+                        Softmax);
 
 }  // namespace xnnpack
 }  // namespace onnxruntime

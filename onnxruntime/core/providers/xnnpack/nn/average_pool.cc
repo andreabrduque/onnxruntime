@@ -43,8 +43,8 @@ static Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
                                                    C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                                    output_min, output_max, flags, &p);
   } else if (avgpool_type == OpComputeType::op_compute_type_qu8) {
-    uint8_t output_min = clip_min_max ? gsl::narrow<uint8_t>(clip_min_max->first) : 0;
-    uint8_t output_max = clip_min_max ? gsl::narrow<uint8_t>(clip_min_max->second) : 255;
+    uint8_t output_min = 0;
+    uint8_t output_max = 255;
     status = xnn_create_average_pooling2d_nhwc_qu8(input_padding_top, input_padding_right,
                                                    input_padding_bottom, input_padding_left,
                                                    pooling_height, pooling_width,
@@ -258,9 +258,9 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     AveragePool);
 
-ONNX_OPERATOR_TYPED_KERNEL_EX(
+ONNX_OPERATOR_KERNEL_EX(
     QLinearAveragePool, kMSInternalNHWCDomain, 1,
-    uint8_t, kXnnpackExecutionProvider,
+    kXnnpackExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
     AveragePool);
 

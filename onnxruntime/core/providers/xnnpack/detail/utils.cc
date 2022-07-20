@@ -105,7 +105,7 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
   def.name = qdq_to_onnx_type_map.at(qtype);
   // registration
   def.domain = kMSInternalNHWCDomain;  // should always be kMSInternalNHWCDomain
-  def.since_version = node_unit.GetNode().SinceVersion();
+  def.since_version = node_unit.GetNode().SinceVersion(); // seems we can't change it for registered schame
   // x x-scale x-zp w w-scale w-zp. Some QDQops wouldn't have 9 inputs,
   // but the 5 more unit extra memory is not too expensive
   def.inputs.reserve(9);
@@ -141,6 +141,9 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
     const auto& y_quant_param = node_unit.Outputs()[0].quant_param.value();
     def.inputs.push_back(y_quant_param.scale.Name());
     def.inputs.push_back(y_quant_param.zero_point ? y_quant_param.zero_point->Name() : "");
+    if (qtype == QuantizedOpType::QDQSoftmax) {
+      def.attributes.emplace("opset", utils::MakeAttribute(std::string("opset"), int64_t(node_unit.SinceVersion())));
+    }
   } else if (qtype == QuantizedOpType::QDQMaxPool) {
     // only one input for QDQMaxPool, Tensor:X
     def.inputs.push_back(inputs[0].node_arg.Name());
