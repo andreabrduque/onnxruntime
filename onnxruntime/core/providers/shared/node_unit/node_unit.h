@@ -69,8 +69,8 @@ class NodeUnit {
   const std::vector<const Node*>& GetQNodes() const noexcept { return q_nodes_; }
   std::vector<const Node*> GetAllNodesInGroup() const noexcept;
 
-  Node::EdgeConstIterator OutputEdgesBegin(size_t index);
-  Node::EdgeConstIterator OutputEdgesEnd(size_t index);
+  Node::EdgeConstIterator OutputEdgesBegin(size_t index) const;
+  Node::EdgeConstIterator OutputEdgesEnd(size_t index) const;
 
  private:
   const std::vector<const Node*> q_nodes_;       // q-nodes for this NodeUnit

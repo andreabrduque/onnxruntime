@@ -93,13 +93,27 @@ bool Softmax::IsSoftmaxOnnxNodeSupported(const NodeUnit& node_unit,
 
 Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   const auto& node = info.node();
+  auto input_defs = node.InputDefs();
+  int op_compute_type = 0;
+  ORT_ENFORCE(GetType(*input_defs[0], op_compute_type));
+  if (op_compute_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    op_type_ = OpComputeType::op_compute_type_fp32;
+  } else if (op_compute_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    op_type_ = OpComputeType::op_compute_type_qu8;
+  } else {
+    ORT_THROW("error kernel type input, expected uint8|float, but got `", op_compute_type, "`");
+  }
   int64_t opset = -1;
-  Status status = info.GetAttr<int64_t>("opset", &opset);
-  ORT_ENFORCE(status.IsOK(), "opset must be existed in attributes of QlinearSoftmax");
-  opset_ = gsl::narrow_cast<int>(opset);
-
+  if (op_type_ == OpComputeType::op_compute_type_fp32) {
+    opset = node.SinceVersion();
+  } else {
+    // Qlinearsoftmax's opset keep 1, we have to parse it by "opset"
+    Status status = info.GetAttr<int64_t>("opset", &opset);
+    ORT_ENFORCE(status.IsOK(), "opset must be existed in attributes of QlinearSoftmax");
+    opset_ = gsl::narrow_cast<int>(opset);
+  }
   int64_t axis = -1;
-  status = info.GetAttr<int64_t>("axis", &axis);
+  Status status = info.GetAttr<int64_t>("axis", &axis);
   // our op checker function has ensured that axis must be the last dim
   // The "semantic" meaning of axis has changed in opset-13.
   // Please compare: https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax
@@ -115,7 +129,6 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   }
 
   // we have check it in GetCapability
-  auto input_defs = node.InputDefs();
   const auto& x_shape = input_defs[0]->Shape();
   size_t rank = x_shape->dim_size();
   if (rank == 0) {
@@ -123,16 +136,6 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   }
   if (axis_ < 0) {
     axis_ = gsl::narrow<int>(HandleNegativeAxis(axis_, int64_t(rank)));
-  }
-
-  int kernel_dtype = 0;
-  ORT_ENFORCE(GetType(*input_defs[0], kernel_dtype));
-  if (kernel_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    op_type_ = OpComputeType::op_compute_type_fp32;
-  } else if (kernel_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    op_type_ = OpComputeType::op_compute_type_qu8;
-  } else {
-    ORT_THROW("error kernel type input, expected uint8|float, but got `", kernel_dtype, "`");
   }
 
   uint32_t channels = gsl::narrow_cast<uint32_t>(x_shape->dim(axis_).dim_value());
@@ -213,10 +216,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Softmax, kOnnxDomain, 1, 12, kXnnpackExecution
 ONNX_OPERATOR_KERNEL_EX(Softmax, kOnnxDomain, 13, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         Softmax);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(QLinearSoftmax, kMSInternalNHWCDomain, 1, 12, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
-                                  Softmax);
-ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kMSInternalNHWCDomain, 13, kXnnpackExecutionProvider,
+
+ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kMSInternalNHWCDomain, 1, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
                         Softmax);
 

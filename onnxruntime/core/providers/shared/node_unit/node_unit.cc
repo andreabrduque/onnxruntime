@@ -244,7 +244,7 @@ void NodeUnit::InitForSingleNode() {
   }
 }
 
-Node::EdgeConstIterator NodeUnit::OutputEdgesBegin(size_t index) {
+Node::EdgeConstIterator NodeUnit::OutputEdgesBegin(size_t index) const {
   if (type_ == Type::SingleNode) {
     ORT_ENFORCE(index == 0, "invalid output node index");
     return target_node_.OutputEdgesBegin();
@@ -254,7 +254,7 @@ Node::EdgeConstIterator NodeUnit::OutputEdgesBegin(size_t index) {
   }
 }
 
-Node::EdgeConstIterator NodeUnit::OutputEdgesEnd(size_t index) {
+Node::EdgeConstIterator NodeUnit::OutputEdgesEnd(size_t index) const {
   if (type_ == Type::SingleNode) {
     ORT_ENFORCE(index == 0, "invalid output node index");
     return target_node_.OutputEdgesEnd();

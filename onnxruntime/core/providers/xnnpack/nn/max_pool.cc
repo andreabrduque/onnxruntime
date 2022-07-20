@@ -237,7 +237,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 11, 11, kXnnpa
                                       .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                                                             DataTypeImpl::GetTensorType<uint8_t>()}),
                                   MaxPool);
-
+// qlinearmaxpool is not essential
 ONNX_OPERATOR_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 12, kXnnpackExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
