@@ -840,7 +840,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   }
 
   // We will go through all the output edges
-  for (auto it = node_unit.OutputEdgesBegin(0), end = node_unit.OutputEdgesEnd(0); it != end; ++it) {
+  for (const auto it = node_unit.OutputEdgesBegin(0), end = node_unit.OutputEdgesEnd(0); it != end; ++it) {
     const auto& dest_node_unit = model_builder.GetNodeUnit(&it->GetNode());
     const auto& op_type = dest_node_unit.OpType();
     // TODO add quantized matmul when reshape support quantized input
