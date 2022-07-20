@@ -653,10 +653,9 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
     return ANEURALNETWORKS_FUSED_NONE;
   }
 
-  const auto& output_node = *output_nodes[0];
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   bool fuse_code_assigned_from_activation = false;
-  for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
+  for (auto it = node_unit.OutputEdgesBegin(0), end = node_unit.OutputEdgesEnd(0); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
 
