@@ -94,20 +94,21 @@ bool Softmax::IsSoftmaxOnnxNodeSupported(const NodeUnit& node_unit,
 Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   const auto& node = info.node();
   auto input_defs = node.InputDefs();
-  int op_compute_type = 0;
-  ORT_ENFORCE(GetType(*input_defs[0], op_compute_type));
-  if (op_compute_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  int x_dtype = 0;
+  ORT_ENFORCE(GetType(*input_defs[0], x_dtype));
+  if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     op_type_ = OpComputeType::op_compute_type_fp32;
-  } else if (op_compute_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+  } else if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     op_type_ = OpComputeType::op_compute_type_qu8;
   } else {
-    ORT_THROW("error kernel type input, expected uint8|float, but got `", op_compute_type, "`");
+    ORT_THROW("error kernel type input, expected uint8|float, but got `", x_dtype, "`");
   }
-  int64_t opset = -1;
+
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    opset = node.SinceVersion();
+    opset_ = node.SinceVersion();
   } else {
     // Qlinearsoftmax's opset keep 1, we have to parse it by "opset"
+    int64_t opset = -1;
     Status status = info.GetAttr<int64_t>("opset", &opset);
     ORT_ENFORCE(status.IsOK(), "opset must be existed in attributes of QlinearSoftmax");
     opset_ = gsl::narrow_cast<int>(opset);
@@ -149,16 +150,15 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   struct xnn_operator* p = nullptr;
   if (op_type_ == OpComputeType::op_compute_type_qu8) {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
-    InputTensorOrder tensor_index = {-1, 1, 2, -1, -1, -1, 3, 4, -1};
-    ParseQuantParamFromInfoByOrder(info, tensor_index, quant_param_);
+    quant_param_ = ParseQuantParamForOp(info, x_dtype, QuantOpNary::Unary);
     xstatus = xnn_create_softmax_nc_qu8(
         channels,
         channels,
         channels,
-        quant_param_.X_scale_value,
-        gsl::narrow_cast<uint8_t>(quant_param_.Y_zero_point_value),
-        quant_param_.Y_scale_value,
-        0,  // flags,
+        quant_param_[0].first[0],  // x_scale
+        quant_param_[1].second,    // y_zp
+        quant_param_[1].first[0],  // y_scale
+        0,                         // flags,
         &p);
   } else if (op_type_ == OpComputeType::op_compute_type_fp32) {
     xstatus = xnn_create_softmax_nc_f32(

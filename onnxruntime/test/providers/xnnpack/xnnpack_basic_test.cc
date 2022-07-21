@@ -243,26 +243,6 @@ TEST(XnnpackEP, TestQDQSoftMax_axisZero_v13) {
                   {ExpectedEPNodeAssignment::None});
 }
 
-TEST(XnnpackEP, TestSoftMax_axisZero_v12) {
-  const std::vector<int64_t> input_shape = {1, 2, 3, 5};
-  int64_t axis = input_shape.size() - 1;
-  auto modelCreater = [input_shape, axis](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<float>(input_shape,
-                                               std::numeric_limits<float>::min(),
-                                               std::numeric_limits<float>::max());
-
-    auto* output_arg = builder.MakeOutput();
-
-    // add SoftMax
-    Node& softmax_node = builder.AddNode("Softmax", {input_arg}, {output_arg});
-    softmax_node.AddAttribute("axis", axis);
-    softmax_node.SetSinceVersion(12);
-  };
-  RunModelTest(modelCreater,
-               "xnnpack_test_graph_softmax",
-               {ExpectedEPNodeAssignment::All});
-}
-
 TEST(XnnpackEP, TestSoftMax_axisLast) {
   const std::vector<int64_t> input_shape = {1, 2, 3, 5};
   int64_t axis = input_shape.size() - 1;

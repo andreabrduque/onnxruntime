@@ -21,7 +21,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
                            const Tensor& Weight, const Tensor* Bias,
                            struct xnn_operator*& p,
                            xnn_caches_t caches_t,
-                           QuantParam* quant_param,
+                           const OpQuantParam& quant_param,
                            OpComputeType conv_type) {
   uint32_t kernel_height = gsl::narrow<uint32_t>(kernel_shape[0]);
   uint32_t kernel_width = gsl::narrow<uint32_t>(kernel_shape[1]);
@@ -82,9 +82,9 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         group_input_channels,
         group_output_channels,
         C, M,
-        quant_param->X_zero_point_value, quant_param->X_scale_value,
-        quant_param->W_scale_value, Weight.Data<int8_t>(), B_data,
-        quant_param->Y_zero_point_value, quant_param->Y_scale_value,
+        quant_param[0].second, quant_param[0].first[0],
+        quant_param[1].first[0], Weight.Data<int8_t>(), B_data,
+        quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
         caches_t,
@@ -103,10 +103,10 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         group_output_channels,
         C, M,
         // zero_point will convert to int8_t automatically
-        quant_param->X_zero_point_value, quant_param->X_scale_value,
-        quant_param->W_scale_tensor->Data<float>(),
+        quant_param[0].second, quant_param[0].first[0],
+        quant_param[1].first.data(),
         Weight.Data<int8_t>(), B_data,
-        quant_param->Y_zero_point_value, quant_param->Y_scale_value,
+        quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
         caches_t,
@@ -124,10 +124,10 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         group_input_channels,
         group_output_channels,
         C, M,
-        quant_param->X_zero_point_value, quant_param->X_scale_value,
-        quant_param->W_zero_point_value, quant_param->W_scale_value,
+        quant_param[0].second, quant_param[0].first[0],
+        quant_param[1].second, quant_param[1].first[0],
         Weight.Data<uint8_t>(), B_data,
-        quant_param->Y_zero_point_value, quant_param->Y_scale_value,
+        quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
         caches_t,
@@ -144,16 +144,15 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
   return Status::OK();
 }
 
-static OpComputeType ParseQuantParamAndConType(const OpKernelInfo& info, QuantParam& quant_param_, int32_t x_dtype) {
-  InputTensorOrder tensor_index = {0, 1, 2, 3, 4, 5, 6, 7, 8};
-  ParseQuantParamFromInfoByOrder(info, tensor_index, quant_param_);
+static OpComputeType ParseQuantParamAndConType(const OpKernelInfo& info, OpQuantParam& quant_param, int32_t x_dtype) {
+  quant_param = ParseQuantParamForOp(info, x_dtype, QuantOpNary::Binary);
   OpComputeType conv_type = OpComputeType::op_compute_type_invalid;
   if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
     // The rules of per-channel quantization is that:
     // X-tensor share the same scalar-scale and zp as per-tensor quantization
     // while we have separate quantization params for each conv kernel,
     // and there is total output-channels of kernels
-    if (quant_param_.W_scale_tensor) {
+    if (quant_param[1].first.size() > 1) {
       conv_type = OpComputeType::op_compute_type_qs8_per_channel;
     } else {
       conv_type = OpComputeType::op_compute_type_qs8;
@@ -478,7 +477,7 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 #else
                                    0,
 #endif
-                                   &quant_param_, conv_type_);
+                                   quant_param_, conv_type_);
     ORT_RETURN_IF_ERROR(ret);
     op0_.reset(p);
   }

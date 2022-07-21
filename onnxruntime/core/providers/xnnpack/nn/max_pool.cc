@@ -32,7 +32,7 @@ static bool IsValidQuantMaxPool(const NodeUnit& node_unit, const GraphViewer& gr
   return supported;
 }
 
-}
+}  // namespace
 
 // MaxPool doesn't have any quantization params
 bool MaxPool::IsMaxPoolOnnxNodeSupported(const NodeUnit& node_unit,
@@ -54,7 +54,7 @@ bool MaxPool::IsMaxPoolOnnxNodeSupported(const NodeUnit& node_unit,
     // input of maxpool could be fp16/fp32/fp64,i8/u8 according to ONNX
     if (x_type == nullptr ||
         (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-            x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8)) {
+         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8)) {
       break;
     }
 
