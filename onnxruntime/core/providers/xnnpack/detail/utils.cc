@@ -405,9 +405,10 @@ OpQuantParam ParseQuantParamForOp(const OpKernelInfo& info, int32_t x_dtype, Qua
   // x, x_scale, zero_point
   std::pair<std::vector<float>, uint8_t> param;
   GetScaleAndZeroPoint(info, start_idx, param.first, start_idx + 1, param.second, x_dtype);
-  start_idx += 3;
+  start_idx += 2;
   quant_param.push_back(param);
   if /*constexpr*/ (HowMany == QuantOpNary::Binary) {
+    start_idx++;
     // w, w_scale, zero_point
     GetScaleAndZeroPoint(info, start_idx, param.first, start_idx + 1, param.second, x_dtype);
     start_idx += 2;
