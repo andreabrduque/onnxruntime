@@ -41,11 +41,6 @@ enum TensorQuantType : uint8_t {
   TensorTypeFp16,
 };
 
-enum QuantOpNary : uint8_t {
-  Unary = 1,
-  Binary,
-};
-
 using OpQuantParam = std::vector<std::pair<std::vector<float>, uint8_t>>;
 
 enum class QuantizedOpType : uint8_t {
@@ -88,9 +83,10 @@ bool GetShape(const NodeArg& node_arg, TensorShapeVector& shape);
 
 TensorQuantType GetTensorQuantType(const onnxruntime::NodeUnit& node_unit, int32_t io_index,
                                    bool is_output, const onnxruntime::GraphViewer& graph_viewer);
-//template<QuantOpNary HowMany>
-OpQuantParam ParseQuantParamForOp(const OpKernelInfo& info, int32_t x_dtype, QuantOpNary HowMany);
+
+OpQuantParam ParseQuantParamForOp(const OpKernelInfo& info, int32_t x_dtype, size_t howManyInputScaleAndZp);
 const char* TensorQtypeToString(enum TensorQuantType type);
+const char* OpTypeToString(OpComputeType opCtype);
 
 }  // namespace xnnpack
 }  // namespace onnxruntime

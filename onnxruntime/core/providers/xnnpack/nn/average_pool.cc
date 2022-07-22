@@ -32,7 +32,7 @@ static Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
     flags |= XNN_FLAG_TENSORFLOW_SAME_PADDING;
   }
 
-  xnn_status status;
+  xnn_status status = xnn_status_unsupported_parameter;
   if (avgpool_type == OpComputeType::op_compute_type_fp32) {
     float output_min = clip_min_max ? clip_min_max->first : -INFINITY;
     float output_max = clip_min_max ? clip_min_max->second : INFINITY;
@@ -56,12 +56,11 @@ static Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
                                                    quant_param[1].second,
                                                    quant_param[1].first[0],
                                                    output_min, output_max, flags, &p);
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "error kernel type input, expected uint8|float");
   }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_average_pooling2d_nhwc_ failed. Status:", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_average_pooling2d_nhwc_",
+                           OpTypeToString(avgpool_type), " failed. Status:", status);
   }
   return Status::OK();
 }
@@ -201,8 +200,11 @@ AveragePool::AveragePool(const OpKernelInfo& info)
     avgpool_type_ = OpComputeType::op_compute_type_fp32;
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
-    quant_param_ = ParseQuantParamForOp(info, input_dtype, QuantOpNary::Unary);
+    quant_param_ = ParseQuantParamForOp(info, input_dtype, 1);
     avgpool_type_ = OpComputeType::op_compute_type_qu8;
+  } else {
+    auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X_arg.TypeAsProto()));
+    ORT_THROW("unsupported AveragePool in XnnpackEP, we have FLOAT|UINT8, but got ", stype);
   }
   struct xnn_operator* p;
   auto ret = CreateXnnpackKernel(pool_attrs_, C, clip_min_max_, p,
@@ -241,7 +243,8 @@ Status AveragePool::Compute(OpKernelContext* context) const {
   }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_average_pooling2d_nhwc_ returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_average_pooling2d_nhwc_",
+                           OpTypeToString(avgpool_type_), " returned ", status);
   }
 
   status = xnn_run_operator(op0_.get(), nullptr);

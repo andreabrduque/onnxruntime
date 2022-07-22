@@ -101,7 +101,8 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   } else if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     op_type_ = OpComputeType::op_compute_type_qu8;
   } else {
-    ORT_THROW("error kernel type input, expected uint8|float, but got `", x_dtype, "`");
+    auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*input_defs[0]->TypeAsProto()));
+    ORT_THROW("unsupported Conv in softmax, we have FLOAT|UINT8, but got ", stype);
   }
 
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
@@ -129,7 +130,7 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
     }
   }
 
-  // we have check it in GetCapability
+  // we have checked it in GetCapability
   const auto& x_shape = input_defs[0]->Shape();
   size_t rank = x_shape->dim_size();
   if (rank == 0) {
@@ -150,7 +151,7 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   struct xnn_operator* p = nullptr;
   if (op_type_ == OpComputeType::op_compute_type_qu8) {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
-    quant_param_ = ParseQuantParamForOp(info, x_dtype, QuantOpNary::Unary);
+    quant_param_ = ParseQuantParamForOp(info, x_dtype, 1);
     xstatus = xnn_create_softmax_nc_qu8(
         channels,
         channels,
@@ -168,7 +169,8 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
         0,  // flags,
         &p);
   }
-  ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_softmax_nc failed. Status:", xstatus);
+  ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_softmax_nc_",
+              OpTypeToString(op_type_), " failed. Status:", xstatus);
   op0_.reset(p);
 }
 
@@ -201,7 +203,8 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
         nullptr);
   }
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_softmax_nc_type returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_softmax_nc_",
+                           OpTypeToString(op_type_), " returned ", status);
   }
   status = xnn_run_operator(op0_.get(), nullptr);
   if (status != xnn_status_success) {

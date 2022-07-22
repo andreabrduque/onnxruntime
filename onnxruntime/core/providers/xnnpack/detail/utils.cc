@@ -16,10 +16,24 @@
 namespace onnxruntime {
 namespace xnnpack {
 
+const char* OpTypeToString(OpComputeType opCtype) {
+  switch (opCtype) {
+    case op_compute_type_fp32:
+      return "fp32";
+    case op_compute_type_fp16:
+      return "fp16";
+    case op_compute_type_qs8_per_channel:
+      return "qc8";
+    case op_compute_type_qs8:
+      return "qs8";
+    case op_compute_type_qu8:
+      return "qu8";
+    default:
+      return "invalid";
+  }
+}
 const char* TensorQtypeToString(enum TensorQuantType type) {
   switch (type) {
-    case TensorTypeInvalid:
-      return "Invalid";
     case TensorTypeFp32:
       return "FP32";
     case TensorTypeFp16:
@@ -34,8 +48,9 @@ const char* TensorQtypeToString(enum TensorQuantType type) {
       return "QCINT8";
     case TensorTypeInt32_Per_Channel:
       return "QCINT32";
+    default:
+      return "invalid";
   }
-  return NULL;
 }
 
 bool GetType(const NodeArg& node_arg, int32_t& type) {
@@ -366,7 +381,7 @@ gsl::span<const T> ReadConstantValues(const OpKernelInfo& info, int idx) {
 
   // this should never happen to throw. op support checker should not choose an op that does not have a constant input
   if (!info.TryGetConstantInput(idx, &tensor)) {
-    if constexpr (std::is_same<T, float>::value_type()) {
+    if constexpr (std::is_same<T, float>::value) {
       ORT_THROW("Could not read constant values from idx ", idx);
     } else {
       // It's legal for zero-point to be null
@@ -387,16 +402,23 @@ void GetScaleAndZeroPoint(const OpKernelInfo& info,
     zero_point = ReadConstantValues<uint8_t>(info, zp_idx)[0];
   } else if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
     zero_point = ReadConstantValues<int8_t>(info, zp_idx)[0];
-  } /*else if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    zero_point = ReadConstantValues<int32_t>(info, zp_idx)[0];
-  }*/
-  else {
-    zero_point = 0;
+  } else {
+    ORT_THROW("invalid dtype of zero point, only support uint8|int8, got onnx dtype", x_dtype);
   }
 }
 
-// template<QuantOpNary HowMany>
-OpQuantParam ParseQuantParamForOp(const OpKernelInfo& info, int32_t x_dtype, QuantOpNary HowMany) {
+// A general function To parse QuantParam for different ops,
+// @param info:OpKernelInfo
+// @param x_dtype:int32_t, what types of those quant param, used to parse zero_point, scale is always float-type
+// @param howManyInputScaleAndZp:size_t, how many input tensors require quantized params. Typically,
+// Conv has three inputs, but bias don't ask for a scale and zero point.
+// these definitions are elaborated in onnx schema
+// @ret,OpQuantParam, defined in utils.h, to store all scale and zero point.
+// All ops have at lease one input quant-param(x-scale, x-zero-point)
+// and one ouput quant-param(y-scale, y-zero-point), such as softmax, pool(average-/max-,global-)
+// but we might want to adapt irregular ops like, concat/slice, which may have arbitrary inputs.
+// one more thing, this function only compatible with 8 bytes quantization.
+OpQuantParam ParseQuantParamForOp(const OpKernelInfo& info, int32_t x_dtype, size_t howManyInputScaleAndZp) {
   OpQuantParam quant_param;
   int start_idx = 1;
   // take all data as uint8, so we can easily parse zero-point and store in out data structure.
@@ -407,7 +429,7 @@ OpQuantParam ParseQuantParamForOp(const OpKernelInfo& info, int32_t x_dtype, Qua
   GetScaleAndZeroPoint(info, start_idx, param.first, start_idx + 1, param.second, x_dtype);
   start_idx += 2;
   quant_param.push_back(param);
-  if /*constexpr*/ (HowMany == QuantOpNary::Binary) {
+  for (size_t nThInput = 2; nThInput <= howManyInputScaleAndZp; ++nThInput) {
     start_idx++;
     // w, w_scale, zero_point
     GetScaleAndZeroPoint(info, start_idx, param.first, start_idx + 1, param.second, x_dtype);
