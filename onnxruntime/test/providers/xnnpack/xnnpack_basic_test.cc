@@ -222,14 +222,14 @@ TEST(XnnpackEP, TestQDQConvU8U8) {
 }
 
 TEST(XnnpackEP, TestQDQConvS8S8) {
-  // RunModelTest(BuildQDQConvTestCase<int8_t /* InputType */,
-  //                                   int8_t /* WeightType */,
-  //                                   int32_t /* BiasType */,
-  //                                   int8_t /* OutputType */>(
-  //                  {1, 1, 5, 5} /* input_shape */,
-  //                  {1, 1, 3, 3} /* weights_shape */),
-  //              "xnnpack_qdq_test_graph_conv_s8s8",
-  //              {ExpectedEPNodeAssignment::Some, 0.2f});
+   RunModelTest(BuildQDQConvTestCase<int8_t /* InputType */,
+                                     int8_t /* WeightType */,
+                                     int32_t /* BiasType */,
+                                     int8_t /* OutputType */>(
+                    {1, 1, 5, 5} /* input_shape */,
+                    {1, 1, 3, 3} /* weights_shape */),
+                "xnnpack_qdq_test_graph_conv_s8s8",
+                {ExpectedEPNodeAssignment::Some, 0.2f});
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_s8s8.onnx";
   RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8", 0.7f);

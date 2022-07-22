@@ -9,6 +9,7 @@
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "gsl/gsl-lite.hpp"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -72,9 +73,9 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
     const float output_scale = quant_param[2].first[0];
     const int32_t output_zero_point = quant_param[2].second;
     const int8_t output_min =
-        (int8_t)lrintf(fminf(fmaxf(foutput_min / output_scale + (float)output_zero_point, -128.0f), 127.0f));
+        gsl::narrow<int8_t>(lrintf(fminf(fmaxf(foutput_min / output_scale + output_zero_point, -128.0f), 127.0f)));
     const int8_t output_max =
-        (int8_t)lrintf(fminf(fmaxf(foutput_max / output_scale + (float)output_zero_point, -128.0f), 127.0f));
+        gsl::narrow<int8_t>(lrintf(fminf(fmaxf(foutput_max / output_scale + output_zero_point, -128.0f), 127.0f)));
 
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
     status = xnn_create_convolution2d_nhwc_qs8(
@@ -98,9 +99,9 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
     const float output_scale = quant_param[2].first[0];
     const int32_t output_zero_point = quant_param[2].second;
     const int8_t output_min =
-        (int8_t)lrintf(fminf(fmaxf(foutput_min / output_scale + (float)output_zero_point, -128.0f), 127.0f));
+        gsl::narrow<int8_t>(lrintf(fminf(fmaxf(foutput_min / output_scale + output_zero_point, -128.0f), 127.0f)));
     const int8_t output_max =
-        (int8_t)lrintf(fminf(fmaxf(foutput_max / output_scale + (float)output_zero_point, -128.0f), 127.0f));
+        gsl::narrow<int8_t>(lrintf(fminf(fmaxf(foutput_max / output_scale + output_zero_point, -128.0f), 127.0f)));
     status = xnn_create_convolution2d_nhwc_qc8(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
@@ -124,9 +125,9 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
     const float output_scale = quant_param[2].first[0];
     const int32_t output_zero_point = quant_param[2].second;
     const uint8_t output_min =
-        (uint8_t)lrintf(fminf(fmaxf(foutput_min / output_scale + (float)output_zero_point, 0.0f), 255.0f));
+        gsl::narrow<uint8_t>(lrintf(fminf(fmaxf(foutput_min / output_scale + output_zero_point, 0.0f), 255.0f)));
     const uint8_t output_max =
-        (uint8_t)lrintf(fminf(fmaxf(foutput_max / output_scale + (float)output_zero_point, 0.0f), 255.0f));
+        gsl::narrow<uint8_t>(lrintf(fminf(fmaxf(foutput_max / output_scale + output_zero_point, 0.0f), 255.0f)));
     status = xnn_create_convolution2d_nhwc_qu8(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,

@@ -156,7 +156,7 @@ GetQDQTestCaseFn BuildQDQMaxPoolTestCase(const std::vector<int64_t>& input_shape
     pool_node.AddAttribute("pads", pads);
     std::vector<int64_t> kernel_shape(input_shape.size() - 2, 3);
     pool_node.AddAttribute("kernel_shape", kernel_shape);
-    pool_node.AddAttribute("ceil_mode", 0LL);
+    pool_node.AddAttribute("ceil_mode", static_cast<int64_t>(0));
 
     // add QDQ output
     auto* q_output = builder.MakeIntermediate();

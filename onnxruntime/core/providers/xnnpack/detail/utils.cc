@@ -415,9 +415,9 @@ void GetScaleAndZeroPoint(const OpKernelInfo& info,
 // these definitions are elaborated in onnx schema
 // @ret,OpQuantParam, defined in utils.h, to store all scale and zero point.
 // All ops have at lease one input quant-param(x-scale, x-zero-point)
-// and one ouput quant-param(y-scale, y-zero-point), such as softmax, pool(average-/max-,global-)
+// and one output quant-param(y-scale, y-zero-point), such as softmax, pool(average-/max-,global-)
 // but we might want to adapt irregular ops like, concat/slice, which may have arbitrary inputs.
-// one more thing, this function only compatible with 8 bytes quantization.
+// This function only works with 8 bytes quantization.
 OpQuantParam ParseQuantParamForOp(const OpKernelInfo& info, int32_t x_dtype, size_t howManyInputScaleAndZp) {
   OpQuantParam quant_param;
   int start_idx = 1;
