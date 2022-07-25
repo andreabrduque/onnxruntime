@@ -5,10 +5,12 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/softmax_shared.h"
+#include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
 namespace xnnpack {
-
+std::pair<const onnx::TensorProto*, const onnx::TensorProto*> GetQuantizationZeroPointAndScale(const GraphViewer& graphview,
+                                                                                               const NodeUnitIODef& io_def);
 namespace {
 static bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
   bool supported = false;
@@ -19,6 +21,20 @@ static bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer
     if (x_input_type != TensorTypeUint8 ||
         output_type != TensorTypeUint8) {
       break;
+    }
+    // to verify softmax output scale and zp is 1/256 and 0, otherwise xnnpack ep has to do extra requantization
+    // idealy, QlinearSoftmax or QDQSoftmax will keep this output scale and zp, but we have to handle some 
+    // qdq models converted from other framework
+    auto [scale_tensor, zero_tensor] = GetQuantizationZeroPointAndScale(graph, node_unit.Outputs()[0]);
+    Initializer q_scale(*scale_tensor, node_unit.ModelPath());
+    if (fabs(*q_scale.data<float>() - 1.0f / 256.0f) > 0.0001f) {
+      break;
+    }
+    if (scale_tensor) {
+      Initializer q_zp(*zero_tensor, node_unit.ModelPath());
+      if (*q_zp.raw_data() != 0) {
+        break;
+      }
     }
     supported = true;
   } while (false);

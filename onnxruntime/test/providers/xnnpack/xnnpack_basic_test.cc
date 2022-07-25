@@ -222,7 +222,7 @@ TEST(XnnpackEP, TestQDQConvU8U8) {
 }
 
 TEST(XnnpackEP, TestQDQConvS8S8) {
-   RunModelTest(BuildQDQConvTestCase<int8_t /* InputType */,
+  RunModelTest(BuildQDQConvTestCase<int8_t /* InputType */,
                                      int8_t /* WeightType */,
                                      int32_t /* BiasType */,
                                      int8_t /* OutputType */>(

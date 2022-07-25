@@ -13,6 +13,7 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "onnx/defs/attr_proto_util.h"
 #include "core/common/safeint.h"
+#include "core/optimizer/initializer.h"
 namespace onnxruntime {
 namespace xnnpack {
 
@@ -264,7 +265,6 @@ const onnx::TensorProto* GetQuantizationScale(const InitializedTensorSet& initia
     return nullptr;
   }
 
-  onnx::TensorProto tensor_proto_ret;
   const auto scale_name = io_def.quant_param->scale.Name();
   auto it = initializers.find(scale_name);
   if (it == initializers.cend()) {
@@ -273,17 +273,23 @@ const onnx::TensorProto* GetQuantizationScale(const InitializedTensorSet& initia
   return it->second;
 }
 
-const onnx::TensorProto* GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
-                                                  const NodeUnitIODef& io_def) {
-  if (!io_def.quant_param.has_value() || !io_def.quant_param->zero_point)
-    return nullptr;
-
-  const auto& zero_point_name = io_def.quant_param->zero_point->Name();
-  if (!Contains(initializers, zero_point_name)) {
-    return nullptr;
+std::pair<const onnx::TensorProto*, const onnx::TensorProto*> GetQuantizationZeroPointAndScale(const GraphViewer& graphview,
+                                                                                               const NodeUnitIODef& io_def) {
+  std::pair<const onnx::TensorProto*, const onnx::TensorProto*> ret{0, 0};
+  if (!io_def.quant_param.has_value()) {
+    return ret;
   }
 
-  return initializers.at(zero_point_name);
+  if (io_def.quant_param.value().zero_point) {
+    const auto& zero_point_name = io_def.quant_param->zero_point->Name();
+    ret.second = graphview.GetConstantInitializer(zero_point_name, true);
+  }
+
+  {
+    const auto scale_name = io_def.quant_param->scale.Name();
+    ret.first = graphview.GetConstantInitializer(scale_name, true);
+  }
+  return ret;
 }
 
 // we have uint8,int8 and int8_per-channel
@@ -296,11 +302,7 @@ TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
   if (!GetType(iodef.node_arg, input_type) || iodef.quant_param.has_value() == false) {
     return TensorTypeInvalid;
   }
-
-  const InitializedTensorSet& initializers = graph_viewer.GetAllInitializedTensors();
-  auto* zero_tensor = GetQuantizationZeroPoint(initializers, iodef);
-  auto* scale_tensor = GetQuantizationScale(initializers, iodef);
-
+  auto [scale_tensor, zero_tensor] = GetQuantizationZeroPointAndScale(graph_viewer, iodef);
   if (scale_tensor == nullptr || (zero_tensor && zero_tensor->data_type() != input_type)) {
     return TensorTypeInvalid;
   }
